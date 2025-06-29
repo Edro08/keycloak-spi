@@ -1,7 +1,7 @@
 ## keycloak-spi
 
 **Descripción:** Base de SPIs personalizables para Keycloak, diseñados para facilitar la extensión de funcionalidades clave.<br>
-Puedes adaptar o ampliar estos puntos de integración para ajustarlos a los flujos de tu negocio.<br>
+Estos puntos de integración pueden adaptarse o extenderse para añadir funcionalidades adicionales según las necesidades.<br>
 
 ### 🔹 Authentication
 Nuevo flujo "Reset Credential Email" con pasos personalizables:
