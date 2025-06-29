@@ -1,4 +1,4 @@
-## keycloak-spi
+## 💻 keycloak-spi
 
 **Descripción:** Base de SPIs personalizables para Keycloak, diseñados para facilitar la extensión de funcionalidades clave.<br>
 Estos puntos de integración pueden adaptarse o extenderse para añadir funcionalidades adicionales según las necesidades.<br>
