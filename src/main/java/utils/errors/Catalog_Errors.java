@@ -7,11 +7,9 @@ public class Catalog_Errors {
             500,
             "internal server error");
 
-
     public Errors ErrUserNotFound = errors.NewError(
             400,
             "user not found");
-
 
     public Errors ErrUserInvalidEmail = errors.NewError(
             400,
@@ -24,4 +22,8 @@ public class Catalog_Errors {
     public Errors ErrLifeSpan = errors.NewError(
             500,
             "lifespan not found");
+
+    public Errors ErrRealmNotMaster = errors.NewError(
+            400,
+            "realm is not master");
 }

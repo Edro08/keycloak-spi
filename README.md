@@ -1,19 +1,151 @@
-## 💻 keycloak-spi
+# 💻 keycloak-spi
 
-**Descripción:** Base de SPIs personalizables para Keycloak, diseñados para facilitar la extensión de funcionalidades clave.<br>
-Estos puntos de integración pueden adaptarse o extenderse para añadir funcionalidades adicionales según las necesidades.<br>
+Colección de SPIs (Service Provider Interfaces) modulares, independientes y personalizables para **Keycloak 26.8.1** sobre **Java 21 LTS** (Quarkus runtime).
 
-### 🧊 Authentication
-Nuevo flujo "Reset Credential Email" con pasos personalizables:
-- Paso 1: Guardar evento del usuario
-- Paso 2: Validar usuario
-- Paso 3: Generar token
-- Paso 4: Enviar correo
+Cada SPI cuenta con su propia fábrica (`Factory`), identificador único (`Provider ID`), clases de contexto aisladas y registro independiente en `META-INF/services/`.
 
-### 🧊 Required Actions
-- Nueva acción "Update Password" personalizada:
-  - Puedes integrarla fácilmente a tus propios flujos de seguridad
+---
 
-### 🧊 Endpoints Personalizados
-- Endpoints base para administración:
-  - Punto de partida para construir tus propios endpoints admin
+## 🚀 Guía de Despliegue Rápido
+
+### 1. Compilación
+```bash
+mvn clean package
+```
+
+### 2. Instalación en Docker
+```bash
+# Copiar el JAR al directorio de providers de Keycloak
+docker cp target/keycloak-spi.jar <contenedor_keycloak>:/opt/keycloak/providers/
+
+# Reiniciar para que Keycloak compile y registre los SPIs
+docker restart <contenedor_keycloak>
+
+# Inspeccionar logs en tiempo real
+docker logs -f <contenedor_keycloak>
+```
+
+---
+
+## 🧊 SPI: Reset Credential Email (User)
+
+SPI de autenticación independiente enfocado exclusivamente en la recuperación de contraseñas de usuarios en realms de aplicación/negocio.
+
+### Especificación Técnica:
+* **Tipo de SPI:** `Authenticator`
+* **Factory Class:** `UserResetCredentialEmailFactory`
+* **Provider ID:** `keycloak-spi-send-email`
+* **Nombre en UI:** `NEW RESET CREDENTIAL EMAIL`
+* **Paquete Java:** `org.keycloak.authentication.authenticators.resetcred.user`
+* **Realm Destino:** Realms de aplicación
+
+### Pipeline de Pasos:
+1. **`UserEventSave`:** Registra el evento de inicio de reseteo en Keycloak (`SEND_RESET_PASSWORD`).
+2. **`UserValidateUser`:** Valida que el usuario exista y tenga email configurado. Si no cuenta con email, interrumpe el flujo con error `400`.
+3. **`UserGenerateToken`:** Genera el token de acción (`ExecuteActionsActionToken`) asociado al cliente con la acción `UPDATE_PASSWORD`.
+4. **`UserSendEmail`:** Capa de salida para entrega del enlace.
+
+> 💡 **Adaptabilidad de `UserSendEmail`:**  
+> Esta clase está diseñada como una **capa desacoplada**. Actualmente emite el enlace en `stdout` para propósitos de prueba y laboratorio, pero está concebida para ser reemplazada o adaptada al proveedor final de entrega requerido (SMTP nativo, AWS SES, SendGrid, API REST o colas de mensajería).
+
+### Propiedades Configurables:
+* `RedirectUri` *(Opcional)*: URL de redirección final tras completar el cambio de contraseña.
+* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del enlace en segundos (24 horas).
+
+### Salida Actual en Consola:
+```text
+=========================================================================================
+>>> [KEYCLOAK SPI - USER REALM PASSWORD RESET]
+>>> User      : carlos.perez
+>>> ProcessID : e3b0c442-98fc-1c14-9afb-f4c8996fb924
+>>> RESET URL : http://localhost:8080/realms/mi-realm/login-actions/action-token?key=...
+=========================================================================================
+```
+
+---
+
+## 🧊 SPI: Reset Credential Email (Master Admin)
+
+SPI de autenticación independiente y dedicado para la recuperación de acceso de administradores del realm **`master`**. Posee su propia fábrica, pipeline y reglas de validación separadas del SPI de usuarios.
+
+### Especificación Técnica:
+* **Tipo de SPI:** `Authenticator`
+* **Factory Class:** `MasterResetCredentialEmailFactory`
+* **Provider ID:** `keycloak-spi-send-email-master`
+* **Nombre en UI:** `MASTER RESET CREDENTIAL EMAIL (LOG ONLY)`
+* **Paquete Java:** `org.keycloak.authentication.authenticators.resetcred.master`
+* **Realm Destino:** Exclusivo para realm `master`
+
+### Pipeline de Pasos:
+1. **`MasterEventSave`:** Registra el evento administrativo en `master` (`SEND_RESET_PASSWORD`).
+2. **`MasterValidateUser`:** Valida que la ejecución ocurra en `master` y que el usuario exista. **Permite continuar incluso si el usuario administrador no tiene correo configurado**.
+3. **`MasterGenerateToken`:** Genera el token asociándolo al cliente `security-admin-console` y redirigiendo a la consola administrativa (`/admin/master/console/`).
+4. **`MasterSendEmail`:** Capa de salida visual para los logs del servidor.
+
+> 💡 **Adaptabilidad de `MasterSendEmail`:**  
+> Funciona como una **capa desacoplada**. Por defecto imprime un banner visual destacado en consola para copiar el enlace directamente desde los logs de Docker, pero puede adaptarse si se requiere despachar por canales de alerta administrativa (Slack, webhook, correo seguro, etc.).
+
+### Propiedades Configurables:
+* `RedirectUri` *(Default: /admin/master/console/)*: Redirección automática a la consola de administración.
+* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del enlace en segundos (24 horas).
+
+### Salida Actual en Consola:
+```text
+=========================================================================================
+>>> [KEYCLOAK SPI - MASTER REALM ADMIN PASSWORD RESET]
+>>> User      : admin
+>>> ProcessID : 7a8f3b21-4d1e-4567-9abc-1234567890ab
+>>> RESET URL : http://localhost:8080/realms/master/login-actions/action-token?key=...
+=========================================================================================
+```
+
+---
+
+## 🧊 SPI: Auditoría de Eventos (Admin REST Extension)
+
+SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para registrar eventos de auditoría donde un **Actor (Usuario A)** realiza una acción sobre un **Objetivo (Usuario B)**.
+
+### Especificación Técnica:
+* **Tipo de SPI:** `AdminRealmResourceProvider`
+* **Factory Class:** `BootstrapFactory`
+* **Provider ID:** `audit`
+* **Ruta REST:** `POST /admin/realms/{realm}/audit/events`
+* **Paquete Java:** `org.keycloak.endpoints.audit.event`
+* **Seguridad Requerida:** Token Bearer con rol administrativo `manage-users`
+
+### Estructura Interna:
+* **`handler/EventHandler.java`:** Controlador REST delgado que evalúa permisos y delega a la aplicación.
+* **`application/EventSaveUseCase.java`:** Orquesta la resolución del actor, búsqueda de usuario en base de datos y persistencia en Keycloak.
+* **`domain/`:** Modelos de datos inmutables (`EventRecord`, `EventRequest`, `EventResponse`).
+
+### Contrato de la API
+
+#### Petición (`POST /admin/realms/{realm}/audit/events`):
+```json
+{
+  "targetUser": "carlos.perez",
+  "actor": "admin_maria",
+  "clientId": "security-admin-console",
+  "action": "RESET_PASSWORD_FORCED",
+  "description": "Reseteo solicitado por ticket de soporte",
+  "details": {
+    "ticket": "SEC-1049",
+    "ip": "192.168.1.50"
+  }
+}
+```
+> *Nota: `"actor"` es opcional; si no se especifica, se toma automáticamente del administrador autenticado en el token Bearer.*
+
+#### Respuesta (`200 OK`):
+```json
+{
+  "processId": "c4b183a2-581d-44a6-96cb-8d147bb9a302",
+  "actor": "admin_maria",
+  "targetUser": "carlos.perez",
+  "action": "RESET_PASSWORD_FORCED",
+  "clientId": "security-admin-console",
+  "status": "SUCCESS",
+  "message": "Audit event recorded: User [admin_maria] performed [RESET_PASSWORD_FORCED] on User [carlos.perez]",
+  "timestamp": "2026-10-30T21:07:00"
+}
+```

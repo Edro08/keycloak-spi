@@ -1,4 +1,4 @@
-package org.keycloak.authentication.authenticators.resetcred;
+package org.keycloak.authentication.authenticators.resetcred.user;
 
 import org.keycloak.Config;
 import org.keycloak.authentication.Authenticator;
@@ -12,14 +12,14 @@ import utils.ProvidersID;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NewResetCredentialEmailFactory implements AuthenticatorFactory {
+public class UserResetCredentialEmailFactory implements AuthenticatorFactory {
     private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
             AuthenticationExecutionModel.Requirement.REQUIRED,
     };
 
     private final List<ProviderConfigProperty> configProperties;
 
-    public NewResetCredentialEmailFactory(){
+    public UserResetCredentialEmailFactory() {
         configProperties = new ArrayList<>();
 
         ProviderConfigProperty propertyURL = new ProviderConfigProperty();
@@ -40,7 +40,7 @@ public class NewResetCredentialEmailFactory implements AuthenticatorFactory {
 
     @Override
     public String getDisplayType() {
-    return "NEW RESET CREDENTIAL EMAIL";
+        return "NEW RESET CREDENTIAL EMAIL";
     }
 
     @Override
@@ -65,7 +65,7 @@ public class NewResetCredentialEmailFactory implements AuthenticatorFactory {
 
     @Override
     public String getHelpText() {
-        return "NEW RESET CREDENTIAL EMAIL";
+        return "NEW USER RESET CREDENTIAL EMAIL";
     }
 
     @Override
@@ -75,7 +75,7 @@ public class NewResetCredentialEmailFactory implements AuthenticatorFactory {
 
     @Override
     public Authenticator create(KeycloakSession keycloakSession) {
-        return new NewResetCredentialEmail();
+        return new UserResetCredentialEmail();
     }
 
     @Override
@@ -84,12 +84,10 @@ public class NewResetCredentialEmailFactory implements AuthenticatorFactory {
 
     @Override
     public void postInit(KeycloakSessionFactory keycloakSessionFactory) {
-
     }
 
     @Override
     public void close() {
-
     }
 
     @Override

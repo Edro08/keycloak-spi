@@ -1,4 +1,4 @@
-package org.keycloak.endpoints;
+package org.keycloak.endpoints.audit;
 
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSessionFactory;
@@ -25,6 +25,6 @@ public class BootstrapFactory implements AdminRealmResourceProviderFactory {
 
     @Override
     public String getId() {
-        return ProvidersID.ENDPOINTS_CUSTOM;
+        return ProvidersID.ENDPOINT_AUDIT;
     }
 }

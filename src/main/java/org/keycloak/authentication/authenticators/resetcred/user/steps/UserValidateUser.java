@@ -1,23 +1,23 @@
-package org.keycloak.authentication.authenticators.resetcred.steps;
+package org.keycloak.authentication.authenticators.resetcred.user.steps;
 
 import org.keycloak.models.UserModel;
 import utils.config.IConfig;
 import utils.errors.Catalog_Errors;
 import utils.logger.ILogger;
 
-public class ValidateUser implements IResetCred {
+public class UserValidateUser implements IResetCred {
     private final Catalog_Errors catalogErrors;
     private final IResetCred next;
 
     private static final int MillisSleep = 10000;
 
-    public ValidateUser(IConfig config, ILogger logger, Catalog_Errors catalogErrors, IResetCred next) {
+    public UserValidateUser(IConfig config, ILogger logger, Catalog_Errors catalogErrors, IResetCred next) {
         this.catalogErrors = catalogErrors;
         this.next = next;
     }
 
     @Override
-    public void process(ResetCredContext ctx){
+    public void process(UserResetCredContext ctx) {
         // Validate ctx
         if (ctx.getAuthenticationFlowContext() == null || ctx.getError() != null) return;
 

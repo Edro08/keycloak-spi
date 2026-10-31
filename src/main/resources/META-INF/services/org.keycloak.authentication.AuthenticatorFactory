@@ -1,1 +1,2 @@
-org.keycloak.authentication.authenticators.resetcred.NewResetCredentialEmailFactory
+org.keycloak.authentication.authenticators.resetcred.user.UserResetCredentialEmailFactory
+org.keycloak.authentication.authenticators.resetcred.master.MasterResetCredentialEmailFactory

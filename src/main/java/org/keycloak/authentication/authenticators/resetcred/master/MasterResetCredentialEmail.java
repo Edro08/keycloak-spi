@@ -1,9 +1,12 @@
-package org.keycloak.authentication.authenticators.resetcred;
+package org.keycloak.authentication.authenticators.resetcred.master;
 
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.Authenticator;
-import org.keycloak.authentication.authenticators.resetcred.steps.*;
-import org.keycloak.models.*;
+import org.keycloak.authentication.authenticators.resetcred.ResetCredentialEmail;
+import org.keycloak.authentication.authenticators.resetcred.master.steps.*;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.FormMessage;
 import utils.config.Config;
 import utils.config.IConfig;
@@ -11,7 +14,7 @@ import utils.errors.Catalog_Errors;
 import utils.logger.ILogger;
 import utils.logger.Logger;
 
-public class NewResetCredentialEmail extends ResetCredentialEmail implements Authenticator {
+public class MasterResetCredentialEmail extends ResetCredentialEmail implements Authenticator {
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
@@ -35,13 +38,13 @@ public class NewResetCredentialEmail extends ResetCredentialEmail implements Aut
         ResetCredContext ctx = new ResetCredContext();
         ctx.setAuthenticationFlowContext(context);
 
-        // Process Steps
-        IResetCred sendEmail = new SendEmail(config, logger, catalogErrors, null);
-        IResetCred generateToken = new GenerateToken(config, logger, catalogErrors, sendEmail);
-        IResetCred validateUser = new ValidateUser(config, logger, catalogErrors, generateToken);
-        IResetCred eventSave = new EventSave(config, logger, catalogErrors, validateUser);
+        // Process Steps Pipeline: EventSave -> ValidateUser -> GenerateToken -> SendEmail
+        IResetCred sendEmail = new MasterSendEmail(config, logger, catalogErrors, null);
+        IResetCred generateToken = new MasterGenerateToken(config, logger, catalogErrors, sendEmail);
+        IResetCred validateUser = new MasterValidateUser(config, logger, catalogErrors, generateToken);
+        IResetCred eventSave = new MasterEventSave(config, logger, catalogErrors, validateUser);
 
-        // Start
+        // Start pipeline
         eventSave.process(ctx);
         return ctx;
     }

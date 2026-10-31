@@ -1,4 +1,4 @@
-package org.keycloak.authentication.authenticators.resetcred.steps;
+package org.keycloak.authentication.authenticators.resetcred.user.steps;
 
 import jakarta.ws.rs.core.UriBuilder;
 import org.keycloak.authentication.actiontoken.execactions.ExecuteActionsActionToken;
@@ -15,25 +15,25 @@ import utils.logger.ILogger;
 import java.util.LinkedList;
 import java.util.List;
 
-public class GenerateToken implements IResetCred {
+public class UserGenerateToken implements IResetCred {
     private final IConfig config;
     private final Catalog_Errors catalogErrors;
     private final IResetCred next;
 
-    public GenerateToken(IConfig config, ILogger logger, Catalog_Errors catalogErrors, IResetCred next){
+    public UserGenerateToken(IConfig config, ILogger logger, Catalog_Errors catalogErrors, IResetCred next) {
         this.config = config;
         this.catalogErrors = catalogErrors;
         this.next = next;
     }
 
     @Override
-    public void process(ResetCredContext ctx){
+    public void process(UserResetCredContext ctx) {
         // Validate ctx
         if (ctx.getAuthenticationFlowContext() == null || ctx.getError() != null) return;
 
         // Get LifeSecondsToken and validate
-        String LifeSecondsToken = config.GetString("LifeSecondsToken");
-        if (LifeSecondsToken == null || !LifeSecondsToken.matches("\\d+")) {
+        String lifeSecondsToken = config.GetString("LifeSecondsToken");
+        if (lifeSecondsToken == null || !lifeSecondsToken.matches("\\d+")) {
             ctx.setError(catalogErrors.ErrLifeSpan);
             return;
         }
@@ -51,7 +51,7 @@ public class GenerateToken implements IResetCred {
         actions.add(requiredAction);
 
         // Create expiration time for the token
-        int expiration = Time.currentTime() + Integer.parseInt(LifeSecondsToken);
+        int expiration = Time.currentTime() + Integer.parseInt(lifeSecondsToken);
 
         // Gets the client and realm models and the session
         ClientModel client = ctx.getAuthenticationFlowContext().getAuthenticationSession().getClient();
@@ -59,7 +59,14 @@ public class GenerateToken implements IResetCred {
         KeycloakSession keycloakSession = ctx.getAuthenticationFlowContext().getSession();
 
         // Reset password token creation
-        ExecuteActionsActionToken token = new ExecuteActionsActionToken(ctx.getUserModel().getId(), ctx.getUserModel().getEmail(), expiration, actions, redirectUri, client.getClientId());
+        ExecuteActionsActionToken token = new ExecuteActionsActionToken(
+                ctx.getUserModel().getId(),
+                ctx.getUserModel().getEmail(),
+                expiration,
+                actions,
+                redirectUri,
+                client.getClientId()
+        );
         UriBuilder builder = LoginActionsService.actionTokenProcessor(keycloakSession.getContext().getUri());
         builder.queryParam("key", token.serialize(keycloakSession, realmModel, keycloakSession.getContext().getUri()));
         String enlace = builder.build(realmModel.getName()).toString();
