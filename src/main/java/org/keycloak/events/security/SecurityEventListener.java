@@ -23,8 +23,12 @@ public class SecurityEventListener implements EventListenerProvider {
 
     @Override
     public void onEvent(Event event) {
-        if (event.getType() == EventType.LOGIN_ERROR) {
-            securityAlertUseCase.handleLoginFailure(event);
+        try {
+            if (event.getType() == EventType.LOGIN_ERROR) {
+                securityAlertUseCase.handleLoginFailure(event);
+            }
+        } catch (Throwable t) {
+            // Un listener de eventos de auditoría/seguridad nunca debe interrumpir el flujo principal de Keycloak
         }
     }
 
