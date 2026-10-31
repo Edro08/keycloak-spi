@@ -149,3 +149,57 @@ SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para regist
   "timestamp": "2026-10-30T21:07:00"
 }
 ```
+
+---
+
+## 🧊 SPI: Security Event Listener (Detección de Fuerza Bruta y Spraying)
+
+SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de anomalías en memoria (Sliding Window)**. Captura ataques e incidentes en tiempo real y los emite en consola con formato destacado para propósitos de laboratorio, trazabilidad y pruebas.
+
+### Especificación Técnica:
+* **Tipo de SPI:** `EventListenerProvider`
+* **Factory Class:** `SecurityEventListenerFactory`
+* **Provider ID:** `security-event-listener`
+* **Paquete Java:** `org.keycloak.events.security`
+* **Activación en Keycloak:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Añadir `security-event-listener`
+
+### Estructura Interna:
+* **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Adaptadores SPI de Keycloak (Factory y Provider) que capturan el evento `LOGIN_ERROR` sin contener lógica de negocio.
+* **`anomaly/SecurityAlertUseCase.java`:** Orquesta la resolución de usuario y realm, invoca el análisis del detector y coordina el despacho de la alerta.
+* **`anomaly/SecurityAnomalyDetector.java`:** Motor en memoria con ventana deslizante para correlación de IP (fuerza bruta / spraying) y picos de realm.
+* **`anomaly/SecurityAlertSender.java`:** Capa de salida desacoplada que emite el banner en consola (`stdout`).
+* **`anomaly/SecurityAlertPayload.java`:** Modelo de datos inmutable para el payload de incidentes.
+
+### Detección Inteligente de Seguridad (En Memoria):
+* **1. Detección de Fuerza Bruta / Password Spraying por IP:**  
+  Rastrea en una ventana deslizante de tiempo (ej: 60s) los intentos fallidos (`LOGIN_ERROR`) emitidos desde una misma dirección IP. Si supera el umbral configurado (ej: 5 fallos en cuentas distintas), dispara una alerta crítica con el conteo de cuentas afectadas.
+* **2. Detección de Picos Globales de Fallos (Anomalía de Realm):**  
+  Calcula la tasa global de fallos de login en todo el realm. Si ocurre un pico inusual (ej: 20 fallos en 60s), alerta de inmediato sobre un posible ataque distribuido o incidente generalizado.
+* **3. Filtro Cero Ruido (Antispam):**  
+  Descarta eventos y fallos individuales normales. Incluye periodo de enfriamiento (*cooldown*) para evitar saturar los logs con alertas repetitivas de un mismo incidente.
+
+> 💡 **Adaptabilidad de `SecurityAlertSender`:**  
+> Al igual que las capas de envío de correo (`UserSendEmail` y `MasterSendEmail`), esta clase está concebida como una **capa de salida desacoplada**. Actualmente emite el incidente estructurado en `stdout` para visualización inmediata en entornos de laboratorio o recolectores de logs de Docker, pero está diseñada para que cualquier desarrollador pueda adaptarla al canal final que requiera (Webhook HTTP, Slack, Discord, PagerDuty, AWS SNS, Kafka, etc.).
+
+### Variables de Entorno Configurables:
+* **`KC_ALERT_IP_FAILURES`** (Defecto: `5`)  
+  Umbral de fallos desde una misma dirección IP antes de alertar ataque de fuerza bruta / spraying.
+* **`KC_ALERT_REALM_FAILURES`** (Defecto: `20`)  
+  Umbral de fallos globales en el realm dentro de la ventana de tiempo para alertar pico masivo.
+* **`KC_ALERT_WINDOW_SECONDS`** (Defecto: `60`)  
+  Duración de la ventana deslizante de análisis temporal en segundos.
+* **`KC_ALERT_COOLDOWN_SECONDS`** (Defecto: `120`)  
+  Segundos de espera mínima antes de repetir una misma alerta (protección antispam).
+
+### Salida en Consola (stdout):
+```text
+=========================================================================================
+>>> [KEYCLOAK SPI - SECURITY ANOMALY ALERT]
+>>> Alert Type : IP_BRUTE_FORCE
+>>> Realm      : master
+>>> Client ID  : security-admin-console
+>>> Source IP  : 192.168.1.150
+>>> Last User  : admin
+>>> Message    : La IP 192.168.1.150 ha acumulado 5 intentos fallidos en los últimos 60 segundos afectando a 4 cuenta(s) distinta(s).
+=========================================================================================
+```
