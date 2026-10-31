@@ -152,31 +152,32 @@ SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para regist
 
 ---
 
-## 🧊 SPI: Security Event Listener (Detección de Fuerza Bruta y Spraying)
+## 🧊 SPI: Security Event Listener (Detección de Fuerza Bruta y Spraying con Infinispan)
 
-SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de anomalías en memoria (Sliding Window)**. Captura ataques e incidentes en tiempo real y los emite en consola con formato destacado para propósitos de laboratorio, trazabilidad y pruebas.
+SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de anomalías respaldado nativamente en Infinispan**. Opera automáticamente tanto en entornos de un solo nodo (lab/desarrollo) como en clústeres distribuidos de Kubernetes con HPA, sincronizando el estado entre pods y gestionando la expiración de ventanas con TTL nativo.
 
 ### Especificación Técnica:
 * **Tipo de SPI:** `EventListenerProvider`
 * **Factory Class:** `SecurityEventListenerFactory`
 * **Provider ID:** `security-event-listener`
 * **Paquete Java:** `org.keycloak.events.security`
+* **Caché Utilizado:** Infinispan (`loginFailures` / `InfinispanConnectionProvider`)
 * **Activación en Keycloak:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Añadir `security-event-listener`
 
 ### Estructura Interna:
 * **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Adaptadores SPI de Keycloak (Factory y Provider) que capturan el evento `LOGIN_ERROR` sin contener lógica de negocio.
-* **`anomaly/SecurityAlertUseCase.java`:** Orquesta la resolución de usuario y realm, invoca el análisis del detector y coordina el despacho de la alerta.
-* **`anomaly/SecurityAnomalyDetector.java`:** Motor en memoria con ventana deslizante para correlación de IP (fuerza bruta / spraying) y picos de realm.
+* **`anomaly/SecurityAlertUseCase.java`:** Orquesta la resolución de usuario y realm, invoca el análisis del detector en Infinispan y coordina el despacho de la alerta.
+* **`anomaly/SecurityAnomalyDetector.java`:** Motor de detección respaldado en la caché distribuida de Infinispan con TTL nativo y bloqueo atómico distribuido (`putIfAbsent`).
 * **`anomaly/SecurityAlertSender.java`:** Capa de salida desacoplada que emite el banner en consola (`stdout`).
 * **`anomaly/SecurityAlertPayload.java`:** Modelo de datos inmutable para el payload de incidentes.
 
-### Detección Inteligente de Seguridad (En Memoria):
+### Detección Inteligente de Seguridad (Respaldada en Infinispan):
 * **1. Detección de Fuerza Bruta / Password Spraying por IP:**  
-  Rastrea en una ventana deslizante de tiempo (ej: 60s) los intentos fallidos (`LOGIN_ERROR`) emitidos desde una misma dirección IP. Si supera el umbral configurado (ej: 5 fallos en cuentas distintas), dispara una alerta crítica con el conteo de cuentas afectadas.
+  Rastrea en Infinispan con expiración automática (TTL) los intentos fallidos (`LOGIN_ERROR`) emitidos desde una misma dirección IP. Si supera el umbral configurado (ej: 5 fallos en cuentas distintas), dispara una alerta crítica con el conteo de cuentas afectadas.
 * **2. Detección de Picos Globales de Fallos (Anomalía de Realm):**  
-  Calcula la tasa global de fallos de login en todo el realm. Si ocurre un pico inusual (ej: 20 fallos en 60s), alerta de inmediato sobre un posible ataque distribuido o incidente generalizado.
-* **3. Filtro Cero Ruido (Antispam):**  
-  Descarta eventos y fallos individuales normales. Incluye periodo de enfriamiento (*cooldown*) para evitar saturar los logs con alertas repetitivas de un mismo incidente.
+  Calcula la tasa global de fallos de login en todo el realm sincronizado en el clúster. Si ocurre un pico inusual (ej: 20 fallos en 60s), alerta de inmediato sobre un posible ataque distribuido o incidente generalizado.
+* **3. Filtro Cero Ruido y Enfriamiento Distribuido (Antispam):**  
+  Utiliza `putIfAbsent` atómico con TTL en Infinispan para garantizar que, incluso en clústeres con múltiples réplicas (HPA), solo un pod emita la alerta y se respete el periodo de enfriamiento sin duplicar logs.
 
 > 💡 **Adaptabilidad de `SecurityAlertSender`:**  
 > Al igual que las capas de envío de correo (`UserSendEmail` y `MasterSendEmail`), esta clase está concebida como una **capa de salida desacoplada**. Actualmente emite el incidente estructurado en `stdout` para visualización inmediata en entornos de laboratorio o recolectores de logs de Docker, pero está diseñada para que cualquier desarrollador pueda adaptarla al canal final que requiera (Webhook HTTP, Slack, Discord, PagerDuty, AWS SNS, Kafka, etc.).

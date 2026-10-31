@@ -92,6 +92,6 @@ public class UserResetCredentialEmailFactory implements AuthenticatorFactory {
 
     @Override
     public String getId() {
-        return ProvidersID.FORM_SEND_EMAIL;
+        return ProvidersID.FORM_SEND_EMAIL_USER ;
     }
 }

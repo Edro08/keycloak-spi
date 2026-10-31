@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Caso de uso principal para el procesamiento de fallos de autenticación
- * y emisión de alertas de anomalías de seguridad.
+ * y emisión de alertas de anomalías de seguridad respaldadas por Infinispan.
  */
 public class SecurityAlertUseCase {
 
@@ -25,13 +25,14 @@ public class SecurityAlertUseCase {
 
     /**
      * Procesa un fallo de inicio de sesión (LOGIN_ERROR).
-     * Si los intentos superan los umbrales configurados, despacha las alertas correspondientes.
+     * Si los intentos superan los umbrales configurados en la caché de Infinispan, despacha las alertas.
      */
     public void handleLoginFailure(Event event) {
         String realmName = resolveRealmName(event.getRealmId());
         String username = resolveUsername(event);
 
         List<SecurityAnomalyDetector.AnomalyAlert> alerts = anomalyDetector.registerLoginFailure(
+                session,
                 event.getIpAddress(),
                 username,
                 realmName

@@ -1,13 +1,15 @@
 package org.keycloak.events.security.anomaly;
 
-import java.time.Instant;
+import org.infinispan.Cache;
+import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
+import org.keycloak.models.KeycloakSession;
+
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Detector de anomalías de seguridad en memoria con ventanas deslizantes de tiempo.
- * Identifica ataques de fuerza bruta por IP (Password Spraying) y picos masivos de errores globales.
+ * Detector de anomalías de seguridad respaldado directamente por Infinispan (Caché nativo de Keycloak).
+ * Sincronizado automáticamente entre pods (HPA / Clúster) y con expiración nativa (TTL).
  */
 public class SecurityAnomalyDetector {
 
@@ -15,24 +17,6 @@ public class SecurityAnomalyDetector {
     private final int realmThreshold;
     private final long windowSeconds;
     private final long cooldownSeconds;
-
-    // IP -> Cola de intentos en la ventana actual
-    private final Map<String, Queue<FailureAttempt>> ipFailures = new ConcurrentHashMap<>();
-    private final Map<String, Instant> ipLastAlertTime = new ConcurrentHashMap<>();
-
-    // Realm -> Cola de timestamps de fallos globales en la ventana actual
-    private final Map<String, Queue<Instant>> realmFailures = new ConcurrentHashMap<>();
-    private final Map<String, Instant> realmLastAlertTime = new ConcurrentHashMap<>();
-
-    public static class FailureAttempt {
-        final Instant timestamp;
-        final String username;
-
-        FailureAttempt(Instant timestamp, String username) {
-            this.timestamp = timestamp;
-            this.username = username != null ? username : "unknown";
-        }
-    }
 
     public static class AnomalyAlert {
         private final String title;
@@ -73,72 +57,119 @@ public class SecurityAnomalyDetector {
     }
 
     /**
-     * Registra un LOGIN_ERROR y evalúa si se superaron los umbrales de ataque.
-     *
-     * @return Lista de alertas disparadas (por IP y/o Global). Vacía si está dentro del umbral normal.
+     * Registra un fallo de login en la caché distribuida de Infinispan y evalúa
+     * si se superaron los umbrales configurados para generar alertas.
      */
-    public List<AnomalyAlert> registerLoginFailure(String ipAddress, String username, String realmName) {
+    public List<AnomalyAlert> registerLoginFailure(KeycloakSession session, String ipAddress, String username, String realmName) {
         List<AnomalyAlert> alerts = new ArrayList<>();
-        Instant now = Instant.now();
-        Instant cutoff = now.minusSeconds(windowSeconds);
+        long now = System.currentTimeMillis();
+        long cutoff = now - (windowSeconds * 1000L);
 
         String ip = (ipAddress != null && !ipAddress.trim().isEmpty()) ? ipAddress.trim() : "UNKNOWN_IP";
         String realm = (realmName != null && !realmName.trim().isEmpty()) ? realmName.trim() : "master";
+        String user = (username != null && !username.trim().isEmpty()) ? username.trim() : "unknown";
 
-        // 1. Evaluación por IP (Password Spraying / Fuerza bruta focalizada)
-        Queue<FailureAttempt> ipQueue = ipFailures.computeIfAbsent(ip, k -> new ConcurrentLinkedQueue<>());
-        ipQueue.removeIf(attempt -> attempt.timestamp.isBefore(cutoff));
-        ipQueue.add(new FailureAttempt(now, username));
+        InfinispanConnectionProvider ispn = session.getProvider(InfinispanConnectionProvider.class);
+        if (ispn == null) {
+            return alerts;
+        }
 
-        if (ipQueue.size() >= ipThreshold) {
-            Instant lastAlert = ipLastAlertTime.get(ip);
-            if (lastAlert == null || lastAlert.isBefore(now.minusSeconds(cooldownSeconds))) {
-                ipLastAlertTime.put(ip, now);
+        Cache<String, String> cache = ispn.getCache(InfinispanConnectionProvider.LOGIN_FAILURE_CACHE_NAME);
+        if (cache == null) {
+            return alerts;
+        }
 
-                Set<String> uniqueUsers = new HashSet<>();
-                for (FailureAttempt a : ipQueue) {
-                    uniqueUsers.add(a.username);
+        // 1. Evaluación por IP en Infinispan (Password Spraying / Fuerza bruta)
+        String ipKey = "kc:sec:ip:" + realm + ":" + ip;
+        String rawIpData = cache.get(ipKey);
+
+        List<String> validAttempts = new ArrayList<>();
+        Set<String> uniqueUsers = new HashSet<>();
+
+        if (rawIpData != null && !rawIpData.isEmpty()) {
+            String[] entries = rawIpData.split(";");
+            for (String entry : entries) {
+                int sep = entry.indexOf(":");
+                if (sep > 0) {
+                    try {
+                        long ts = Long.parseLong(entry.substring(0, sep));
+                        if (ts >= cutoff) {
+                            validAttempts.add(entry);
+                            uniqueUsers.add(entry.substring(sep + 1));
+                        }
+                    } catch (NumberFormatException ignored) {}
                 }
+            }
+        }
 
+        validAttempts.add(now + ":" + user);
+        uniqueUsers.add(user);
+
+        // Guardar en Infinispan con TTL automático igual a la ventana de tiempo
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < validAttempts.size(); i++) {
+            if (i > 0) sb.append(";");
+            sb.append(validAttempts.get(i));
+        }
+        cache.put(ipKey, sb.toString(), windowSeconds, TimeUnit.SECONDS);
+
+        if (validAttempts.size() >= ipThreshold) {
+            String cooldownKey = "kc:sec:cd:ip:" + realm + ":" + ip;
+            // Bloqueo atómico distribuido en el clúster con TTL de enfriamiento
+            if (cache.putIfAbsent(cooldownKey, "1", cooldownSeconds, TimeUnit.SECONDS) == null) {
                 String alertMsg = String.format("La IP %s ha acumulado %d intentos fallidos en los últimos %d segundos afectando a %d cuenta(s) distinta(s).",
-                        ip, ipQueue.size(), windowSeconds, uniqueUsers.size());
+                        ip, validAttempts.size(), windowSeconds, uniqueUsers.size());
 
                 alerts.add(new AnomalyAlert(
                         "IP_BRUTE_FORCE",
-                        "🔥 [ALERTA DE SEGURIDAD] Ataque de Fuerza Bruta / Spraying por IP",
+                        "🚨 [ALERTA DE SEGURIDAD] Ataque de Fuerza Bruta / Spraying por IP",
                         alertMsg,
-                        ipQueue.size(),
+                        validAttempts.size(),
                         uniqueUsers.size()
                 ));
             }
         }
 
-        // 2. Evaluación Global del Realm (Pico masivo / Detección de anomalías generales)
-        Queue<Instant> rQueue = realmFailures.computeIfAbsent(realm, k -> new ConcurrentLinkedQueue<>());
-        rQueue.removeIf(ts -> ts.isBefore(cutoff));
-        rQueue.add(now);
+        // 2. Evaluación Global del Realm en Infinispan (Pico masivo de fallos)
+        String realmKey = "kc:sec:realm:" + realm;
+        String rawRealmData = cache.get(realmKey);
 
-        if (rQueue.size() >= realmThreshold) {
-            Instant lastAlert = realmLastAlertTime.get(realm);
-            if (lastAlert == null || lastAlert.isBefore(now.minusSeconds(cooldownSeconds))) {
-                realmLastAlertTime.put(realm, now);
+        List<Long> validRealmTimestamps = new ArrayList<>();
+        if (rawRealmData != null && !rawRealmData.isEmpty()) {
+            String[] entries = rawRealmData.split(",");
+            for (String entry : entries) {
+                try {
+                    long ts = Long.parseLong(entry);
+                    if (ts >= cutoff) {
+                        validRealmTimestamps.add(ts);
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+        }
 
+        validRealmTimestamps.add(now);
+
+        StringBuilder sbRealm = new StringBuilder();
+        for (int i = 0; i < validRealmTimestamps.size(); i++) {
+            if (i > 0) sbRealm.append(",");
+            sbRealm.append(validRealmTimestamps.get(i));
+        }
+        cache.put(realmKey, sbRealm.toString(), windowSeconds, TimeUnit.SECONDS);
+
+        if (validRealmTimestamps.size() >= realmThreshold) {
+            String cooldownRealmKey = "kc:sec:cd:realm:" + realm;
+            if (cache.putIfAbsent(cooldownRealmKey, "1", cooldownSeconds, TimeUnit.SECONDS) == null) {
                 String alertMsg = String.format("Pico masivo de %d intentos fallidos de login detectados en el realm '%s' en los últimos %d segundos.",
-                        rQueue.size(), realm, windowSeconds);
+                        validRealmTimestamps.size(), realm, windowSeconds);
 
                 alerts.add(new AnomalyAlert(
                         "REALM_SPIKE",
                         "🔥 [ALERTA DE SEGURIDAD] Pico Global Anómalo de Errores de Login",
                         alertMsg,
-                        rQueue.size(),
+                        validRealmTimestamps.size(),
                         0
                 ));
             }
-        }
-
-        // Limpieza periódica de IPs inactivas para evitar consumo residual de memoria
-        if (ipFailures.size() > 500) {
-            ipFailures.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         }
 
         return alerts;
