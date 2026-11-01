@@ -9,8 +9,15 @@ Cada SPI cuenta con su propia fábrica (`Factory`), identificador único (`Provi
 ## 🚀 Guía de Despliegue Rápido
 
 ### 1. Compilación
+
+**Con Maven local:**
 ```bash
 mvn clean package
+```
+
+**O mediante Docker (sin requerir Java ni Maven en el host):**
+```bash
+docker run --rm -v "${PWD}:/app" -w /app maven:3.9-eclipse-temurin-21-alpine mvn clean package -DskipTests
 ```
 
 ### 2. Instalación en Docker
@@ -161,13 +168,13 @@ SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de
 * **Factory Class:** `SecurityEventListenerFactory`
 * **Provider ID:** `security-event-listener`
 * **Paquete Java:** `org.keycloak.events.security`
-* **Caché Utilizado:** Infinispan (`loginFailures` / `InfinispanConnectionProvider`)
+* **Caché Utilizado:** Infinispan (`securityAnomalyCache` registrado dinámicamente con aislamiento y fallback en memoria)
 * **Activación en Keycloak:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Añadir `security-event-listener`
 
 ### Estructura Interna:
-* **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Adaptadores SPI de Keycloak (Factory y Provider) que capturan el evento `LOGIN_ERROR` sin contener lógica de negocio.
+* **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Adaptadores SPI de Keycloak (Factory y Provider) que capturan el evento `LOGIN_ERROR` protegidos con manejo de excepciones resiliente para nunca interrumpir el flujo de autenticación de Keycloak.
 * **`anomaly/SecurityAlertUseCase.java`:** Orquesta la resolución de usuario y realm, invoca el análisis del detector en Infinispan y coordina el despacho de la alerta.
-* **`anomaly/SecurityAnomalyDetector.java`:** Motor de detección respaldado en la caché distribuida de Infinispan con TTL nativo y bloqueo atómico distribuido (`putIfAbsent`).
+* **`anomaly/SecurityAnomalyDetector.java`:** Motor de detección con registro dinámico por código de la caché aislada `securityAnomalyCache` en el `EmbeddedCacheManager` de Infinispan. Maneja TTL nativo, bloqueo atómico distribuido (`putIfAbsent`) y fallback concurrente ante entornos restringidos.
 * **`anomaly/SecurityAlertSender.java`:** Capa de salida desacoplada que emite el banner en consola (`stdout`).
 * **`anomaly/SecurityAlertPayload.java`:** Modelo de datos inmutable para el payload de incidentes.
 
