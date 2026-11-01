@@ -1,37 +1,21 @@
-# 💻 keycloak-spi
+# keycloak-spi
 
-Colección de SPIs (Service Provider Interfaces) modulares, independientes y personalizables para **Keycloak 26.8.1** sobre **Java 21 LTS** (Quarkus runtime).
+[![Keycloak](https://img.shields.io/badge/Keycloak-26.x%2B-blue.svg?logo=keycloak&logoColor=white)](https://www.keycloak.org/)
+[![Java](https://img.shields.io/badge/Java-21_LTS-ED8B00.svg?logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Quarkus](https://img.shields.io/badge/Quarkus-3.x-4695EB.svg?logo=quarkus&logoColor=white)](https://quarkus.io/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Cada SPI cuenta con su propia fábrica (`Factory`), identificador único (`Provider ID`), clases de contexto aisladas y registro independiente en `META-INF/services/`.
+Implementación de SPIs (Service Provider Interfaces) para **Keycloak 26.8.1** sobre **Java 21 LTS** (Quarkus runtime).
 
----
-
-## 🚀 Guía de Despliegue Rápido
-
-### 1. Compilación
-```bash
-mvn clean package
-```
-
-### 2. Instalación en Docker
-```bash
-# Copiar el JAR al directorio de providers de Keycloak
-docker cp target/keycloak-spi.jar <contenedor_keycloak>:/opt/keycloak/providers/
-
-# Reiniciar para que Keycloak compile y registre los SPIs
-docker restart <contenedor_keycloak>
-
-# Inspeccionar logs en tiempo real
-docker logs -f <contenedor_keycloak>
-```
+El proyecto contiene proveedores desacoplados con sus correspondientes fábricas (`Factory`), identificadores (`Provider ID`) y declaraciones de servicio en `META-INF/services/`.
 
 ---
 
 ## 🧊 SPI: Reset Credential Email (User)
 
-SPI de autenticación independiente enfocado exclusivamente en la recuperación de contraseñas de usuarios en realms de aplicación/negocio.
+Proveedor de autenticación (`Authenticator`) para la recuperación de contraseñas de usuarios en realms de aplicación.
 
-### Especificación Técnica:
+### Especificación Técnica
 * **Tipo de SPI:** `Authenticator`
 * **Factory Class:** `UserResetCredentialEmailFactory`
 * **Provider ID:** `keycloak-spi-send-email`
@@ -39,20 +23,20 @@ SPI de autenticación independiente enfocado exclusivamente en la recuperación 
 * **Paquete Java:** `org.keycloak.authentication.authenticators.resetcred.user`
 * **Realm Destino:** Realms de aplicación
 
-### Pipeline de Pasos:
+### Pipeline de Ejecución
 1. **`UserEventSave`:** Registra el evento de inicio de reseteo en Keycloak (`SEND_RESET_PASSWORD`).
-2. **`UserValidateUser`:** Valida que el usuario exista y tenga email configurado. Si no cuenta con email, interrumpe el flujo con error `400`.
-3. **`UserGenerateToken`:** Genera el token de acción (`ExecuteActionsActionToken`) asociado al cliente con la acción `UPDATE_PASSWORD`.
-4. **`UserSendEmail`:** Capa de salida para entrega del enlace.
+2. **`UserValidateUser`:** Valida la existencia del usuario y la presencia de dirección de correo electrónico (retorna error HTTP 400 si no existe correo registrado).
+3. **`UserGenerateToken`:** Emite un token de acción (`ExecuteActionsActionToken`) asociado al cliente con la acción `UPDATE_PASSWORD`.
+4. **`UserSendEmail`:** Capa de salida encargada de procesar el enlace generado.
 
-> 💡 **Adaptabilidad de `UserSendEmail`:**  
-> Esta clase está diseñada como una **capa desacoplada**. Actualmente emite el enlace en `stdout` para propósitos de prueba y laboratorio, pero está concebida para ser reemplazada o adaptada al proveedor final de entrega requerido (SMTP nativo, AWS SES, SendGrid, API REST o colas de mensajería).
+> 💡 **Consideraciones de Integración:**  
+> La clase `UserSendEmail` actúa como interfaz de salida desacoplada. Actualmente emite el enlace generado a `stdout` para entornos de pruebas, permitiendo su sustitución por implementaciones SMTP, APIs de mensajería (SendGrid, AWS SES) o colas asíncronas.
 
-### Propiedades Configurables:
-* `RedirectUri` *(Opcional)*: URL de redirección final tras completar el cambio de contraseña.
-* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del enlace en segundos (24 horas).
+### Parámetros Configurables
+* `RedirectUri` *(Opcional)*: URL de retorno tras completar el cambio de credencial.
+* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del enlace en segundos.
 
-### Salida Actual en Consola:
+### Formato de Salida en Consola
 ```text
 =========================================================================================
 >>> [KEYCLOAK SPI - USER REALM PASSWORD RESET]
@@ -66,30 +50,30 @@ SPI de autenticación independiente enfocado exclusivamente en la recuperación 
 
 ## 🧊 SPI: Reset Credential Email (Master Admin)
 
-SPI de autenticación independiente y dedicado para la recuperación de acceso de administradores del realm **`master`**. Posee su propia fábrica, pipeline y reglas de validación separadas del SPI de usuarios.
+Proveedor de autenticación (`Authenticator`) dedicado a la recuperación de acceso administrativo en el realm **`master`**.
 
-### Especificación Técnica:
+### Especificación Técnica
 * **Tipo de SPI:** `Authenticator`
 * **Factory Class:** `MasterResetCredentialEmailFactory`
 * **Provider ID:** `keycloak-spi-send-email-master`
 * **Nombre en UI:** `MASTER RESET CREDENTIAL EMAIL (LOG ONLY)`
 * **Paquete Java:** `org.keycloak.authentication.authenticators.resetcred.master`
-* **Realm Destino:** Exclusivo para realm `master`
+* **Realm Destino:** Realm `master`
 
-### Pipeline de Pasos:
+### Pipeline de Ejecución
 1. **`MasterEventSave`:** Registra el evento administrativo en `master` (`SEND_RESET_PASSWORD`).
-2. **`MasterValidateUser`:** Valida que la ejecución ocurra en `master` y que el usuario exista. **Permite continuar incluso si el usuario administrador no tiene correo configurado**.
-3. **`MasterGenerateToken`:** Genera el token asociándolo al cliente `security-admin-console` y redirigiendo a la consola administrativa (`/admin/master/console/`).
-4. **`MasterSendEmail`:** Capa de salida visual para los logs del servidor.
+2. **`MasterValidateUser`:** Valida que la ejecución pertenezca al realm `master` y que el usuario exista. Permite la ejecución incluso si la cuenta administrativa carece de correo registrado.
+3. **`MasterGenerateToken`:** Genera el token asociándolo al cliente `security-admin-console` con redirección a `/admin/master/console/`.
+4. **`MasterSendEmail`:** Capa de salida para trazabilidad administrativa.
 
-> 💡 **Adaptabilidad de `MasterSendEmail`:**  
-> Funciona como una **capa desacoplada**. Por defecto imprime un banner visual destacado en consola para copiar el enlace directamente desde los logs de Docker, pero puede adaptarse si se requiere despachar por canales de alerta administrativa (Slack, webhook, correo seguro, etc.).
+> 💡 **Consideraciones de Integración:**  
+> Por defecto emite el enlace directamente a la consola (`stdout`) para su uso directo desde los logs del servidor, pero puede adaptarse a canales de alerta administrativa (Slack, webhook, correo seguro, etc.).
 
-### Propiedades Configurables:
+### Parámetros Configurables
 * `RedirectUri` *(Default: /admin/master/console/)*: Redirección automática a la consola de administración.
-* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del enlace en segundos (24 horas).
+* `LifeSecondsToken` *(Default: 86400)*: Tiempo de validez del token en segundos.
 
-### Salida Actual en Consola:
+### Formato de Salida en Consola
 ```text
 =========================================================================================
 >>> [KEYCLOAK SPI - MASTER REALM ADMIN PASSWORD RESET]
@@ -103,24 +87,24 @@ SPI de autenticación independiente y dedicado para la recuperación de acceso d
 
 ## 🧊 SPI: Auditoría de Eventos (Admin REST Extension)
 
-SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para registrar eventos de auditoría donde un **Actor (Usuario A)** realiza una acción sobre un **Objetivo (Usuario B)**.
+Extensión de la API administrativa (`AdminRealmResourceProvider`) para registrar eventos de auditoría donde un actor realiza operaciones sobre un usuario objetivo.
 
-### Especificación Técnica:
+### Especificación Técnica
 * **Tipo de SPI:** `AdminRealmResourceProvider`
 * **Factory Class:** `BootstrapFactory`
 * **Provider ID:** `audit`
-* **Ruta REST:** `POST /admin/realms/{realm}/audit/events`
+* **Endpoint:** `POST /admin/realms/{realm}/audit/events`
 * **Paquete Java:** `org.keycloak.endpoints.audit.event`
-* **Seguridad Requerida:** Token Bearer con rol administrativo `manage-users`
+* **Autorización:** Token Bearer con rol `manage-users`
 
-### Estructura Interna:
-* **`handler/EventHandler.java`:** Controlador REST delgado que evalúa permisos y delega a la aplicación.
-* **`application/EventSaveUseCase.java`:** Orquesta la resolución del actor, búsqueda de usuario en base de datos y persistencia en Keycloak.
+### Estructura
+* **`handler/EventHandler.java`:** Endpoint JAX-RS que valida el contexto de seguridad y delega al caso de uso.
+* **`application/EventSaveUseCase.java`:** Orquestador de resolución de identidades y persistencia de eventos en el store de Keycloak.
 * **`domain/`:** Modelos de datos inmutables (`EventRecord`, `EventRequest`, `EventResponse`).
 
 ### Contrato de la API
 
-#### Petición (`POST /admin/realms/{realm}/audit/events`):
+#### Solicitud (`POST /admin/realms/{realm}/audit/events`)
 ```json
 {
   "targetUser": "carlos.perez",
@@ -134,9 +118,9 @@ SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para regist
   }
 }
 ```
-> *Nota: `"actor"` es opcional; si no se especifica, se toma automáticamente del administrador autenticado en el token Bearer.*
+> *El campo `"actor"` es opcional; si se omite, se infiere del subject presente en el token de autenticación.*
 
-#### Respuesta (`200 OK`):
+#### Respuesta (`200 OK`)
 ```json
 {
   "processId": "c4b183a2-581d-44a6-96cb-8d147bb9a302",
@@ -152,47 +136,45 @@ SPI de extensión administrativa REST (`AdminRealmResourceProvider`) para regist
 
 ---
 
-## 🧊 SPI: Security Event Listener (Detección de Fuerza Bruta y Spraying con Infinispan)
+## 🧊 SPI: Security Event Listener (Detección de Intentos Fallidos)
 
-SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de anomalías respaldado nativamente en Infinispan**. Opera automáticamente tanto en entornos de un solo nodo (lab/desarrollo) como en clústeres distribuidos de Kubernetes con HPA, sincronizando el estado entre pods y gestionando la expiración de ventanas con TTL nativo.
+Receptor de eventos (`EventListenerProvider`) que procesa fallos de autenticación (`LOGIN_ERROR`) y gestiona umbrales de alerta mediante una caché aislada de Infinispan.
 
-### Especificación Técnica:
+### Especificación Técnica
 * **Tipo de SPI:** `EventListenerProvider`
 * **Factory Class:** `SecurityEventListenerFactory`
 * **Provider ID:** `security-event-listener`
 * **Paquete Java:** `org.keycloak.events.security`
-* **Caché Utilizado:** Infinispan (`securityAnomalyCache` registrado dinámicamente con aislamiento y fallback en memoria)
-* **Activación en Keycloak:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Añadir `security-event-listener`
+* **Almacenamiento:** Caché `securityAnomalyCache` en Infinispan (definida dinámicamente con fallback en memoria)
+* **Habilitación:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Agregar `security-event-listener`
 
-### Estructura Interna:
-* **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Adaptadores SPI de Keycloak (Factory y Provider) que capturan el evento `LOGIN_ERROR` protegidos con manejo de excepciones resiliente para nunca interrumpir el flujo de autenticación de Keycloak.
-* **`anomaly/SecurityAlertUseCase.java`:** Orquesta la resolución de usuario y realm, invoca el análisis del detector en Infinispan y coordina el despacho de la alerta.
-* **`anomaly/SecurityAnomalyDetector.java`:** Motor de detección con registro dinámico por código de la caché aislada `securityAnomalyCache` en el `EmbeddedCacheManager` de Infinispan. Maneja TTL nativo, bloqueo atómico distribuido (`putIfAbsent`) y fallback concurrente ante entornos restringidos.
-* **`anomaly/SecurityAlertSender.java`:** Capa de salida desacoplada que emite el banner en consola (`stdout`).
-* **`anomaly/SecurityAlertPayload.java`:** Modelo de datos inmutable para el payload de incidentes.
+### Estructura
+* **`SecurityEventListenerFactory.java` & `SecurityEventListener.java`:** Proveedor de eventos que captura `LOGIN_ERROR` encapsulado para aislar excepciones de la transacción principal.
+* **`anomaly/SecurityAlertUseCase.java`:** Extrae metadatos del evento (realm, IP, usuario) y evalúa los umbrales configurados.
+* **`anomaly/SecurityAnomalyDetector.java`:** Gestión de contadores temporales con expiración TTL en Infinispan y deduplicación atómica (`putIfAbsent`).
+* **`anomaly/SecurityAlertSender.java`:** Capa de salida desacoplada que formatea el reporte de alerta a `stdout`.
+* **`anomaly/SecurityAlertPayload.java`:** Estructura del evento de alerta.
 
-### Detección Inteligente de Seguridad (Respaldada en Infinispan):
-* **1. Detección de Fuerza Bruta / Password Spraying por IP:**  
-  Rastrea en Infinispan con expiración automática (TTL) los intentos fallidos (`LOGIN_ERROR`) emitidos desde una misma dirección IP. Si supera el umbral configurado (ej: 5 fallos en cuentas distintas), dispara una alerta crítica con el conteo de cuentas afectadas.
-* **2. Detección de Picos Globales de Fallos (Anomalía de Realm):**  
-  Calcula la tasa global de fallos de login en todo el realm sincronizado en el clúster. Si ocurre un pico inusual (ej: 20 fallos en 60s), alerta de inmediato sobre un posible ataque distribuido o incidente generalizado.
-* **3. Filtro Cero Ruido y Enfriamiento Distribuido (Antispam):**  
-  Utiliza `putIfAbsent` atómico con TTL en Infinispan para garantizar que, incluso en clústeres con múltiples réplicas (HPA), solo un pod emita la alerta y se respete el periodo de enfriamiento sin duplicar logs.
+> 💡 **Consideraciones de Integración:**  
+> `SecurityAlertSender` emite el reporte de alerta a `stdout`. Al estar desacoplada, puede extenderse para enviar eventos a Webhooks, Slack, Discord, PagerDuty, AWS SNS o Kafka.
 
-> 💡 **Adaptabilidad de `SecurityAlertSender`:**  
-> Al igual que las capas de envío de correo (`UserSendEmail` y `MasterSendEmail`), esta clase está concebida como una **capa de salida desacoplada**. Actualmente emite el incidente estructurado en `stdout` para visualización inmediata en entornos de laboratorio o recolectores de logs de Docker, pero está diseñada para que cualquier desarrollador pueda adaptarla al canal final que requiera (Webhook HTTP, Slack, Discord, PagerDuty, AWS SNS, Kafka, etc.).
+### Lógica de Detección
+1. **Tasa de Fallos por IP (Fuerza Bruta / Spraying):**  
+   Registra los intentos fallidos asociados a una dirección IP en una ventana de tiempo móvil (`KC_ALERT_WINDOW_SECONDS`). Si se alcanza el umbral de intentos (`KC_ALERT_IP_FAILURES`), se emite un reporte indicando el número de intentos y las cuentas objetivo distintas.
+2. **Tasa Global de Fallos en el Realm:**  
+   Registra el volumen acumulado de fallos en todo el realm. Si se supera el límite global (`KC_ALERT_REALM_FAILURES`), se dispara una notificación de incremento anómalo.
+3. **Periodo de Enfriamiento (Cooldown Distribuido):**  
+   Aplica una clave atómica con TTL (`KC_ALERT_COOLDOWN_SECONDS`) para evitar alertas reiteradas por el mismo origen durante el intervalo configurado.
 
-### Variables de Entorno Configurables:
-* **`KC_ALERT_IP_FAILURES`** (Defecto: `5`)  
-  Umbral de fallos desde una misma dirección IP antes de alertar ataque de fuerza bruta / spraying.
-* **`KC_ALERT_REALM_FAILURES`** (Defecto: `20`)  
-  Umbral de fallos globales en el realm dentro de la ventana de tiempo para alertar pico masivo.
-* **`KC_ALERT_WINDOW_SECONDS`** (Defecto: `60`)  
-  Duración de la ventana deslizante de análisis temporal en segundos.
-* **`KC_ALERT_COOLDOWN_SECONDS`** (Defecto: `120`)  
-  Segundos de espera mínima antes de repetir una misma alerta (protección antispam).
+### Variables de Entorno
+| Variable | Tipo | Defecto | Descripción |
+| :--- | :---: | :---: | :--- |
+| `KC_ALERT_IP_FAILURES` | Entero | `5` | Intentos fallidos por IP antes de disparar alerta |
+| `KC_ALERT_REALM_FAILURES` | Entero | `20` | Intentos fallidos acumulados en el realm antes de alertar |
+| `KC_ALERT_WINDOW_SECONDS` | Entero | `60` | Ventana de tiempo de análisis en segundos |
+| `KC_ALERT_COOLDOWN_SECONDS` | Entero | `120` | Intervalo de silencio posterior a una alerta generada |
 
-### Salida en Consola (stdout):
+### Formato de Salida en Consola
 ```text
 =========================================================================================
 >>> [KEYCLOAK SPI - SECURITY ANOMALY ALERT]
@@ -204,3 +186,30 @@ SPI de escucha de eventos (`EventListenerProvider`) con **motor de detección de
 >>> Message    : La IP 192.168.1.150 ha acumulado 5 intentos fallidos en los últimos 60 segundos afectando a 4 cuenta(s) distinta(s).
 =========================================================================================
 ```
+
+---
+
+## ⚡ Inicio Rápido
+
+### 1. Compilación
+```bash
+mvn clean package
+```
+
+### 2. Instalación en Docker
+```bash
+# Copiar el artefacto al directorio de providers de Keycloak
+docker cp target/keycloak-spi.jar <contenedor_keycloak>:/opt/keycloak/providers/
+
+# Reiniciar el contenedor para procesar los providers
+docker restart <contenedor_keycloak>
+
+# Verificar logs de inicio
+docker logs -f <contenedor_keycloak>
+```
+
+---
+
+## 📄 Licencia
+
+Distribuido bajo la licencia [Apache 2.0](LICENSE). Consulta los archivos [LICENSE](LICENSE) y [NOTICE](NOTICE) para más información.

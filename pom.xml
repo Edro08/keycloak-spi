@@ -8,6 +8,16 @@
     <artifactId>keycloak-spi</artifactId>
     <version>26.8.1</version>
     <packaging>jar</packaging>
+    <name>Keycloak SPIs</name>
+    <description>Custom modular SPIs for Keycloak 26.8.1 on Java 21 LTS</description>
+
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
