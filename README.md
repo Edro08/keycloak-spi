@@ -9,15 +9,8 @@ Cada SPI cuenta con su propia fábrica (`Factory`), identificador único (`Provi
 ## 🚀 Guía de Despliegue Rápido
 
 ### 1. Compilación
-
-**Con Maven local:**
 ```bash
 mvn clean package
-```
-
-**O mediante Docker (sin requerir Java ni Maven en el host):**
-```bash
-docker run --rm -v "${PWD}:/app" -w /app maven:3.9-eclipse-temurin-21-alpine mvn clean package -DskipTests
 ```
 
 ### 2. Instalación en Docker
