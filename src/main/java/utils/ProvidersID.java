@@ -7,4 +7,5 @@ public class ProvidersID {
     public static final String ENDPOINT_AUDIT = "audit";
 
     public static final String EVENT_LISTENER_SECURITY = "security-event-listener";
+    public static final String EVENT_LISTENER_METRICS = "metrics-listener";
 }

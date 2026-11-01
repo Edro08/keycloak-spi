@@ -68,6 +68,13 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Micrometer Core (Runtime de Keycloak Quarkus) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>1.13.0</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

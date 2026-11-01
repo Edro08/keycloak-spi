@@ -1,1 +1,2 @@
 org.keycloak.events.security.SecurityEventListenerFactory
+org.keycloak.events.metrics.MetricsEventListenerFactory

@@ -189,6 +189,26 @@ Receptor de eventos (`EventListenerProvider`) que procesa fallos de autenticaci�
 
 ---
 
+## 🧊 SPI: Metrics Event Listener (Telemetría Prometheus)
+
+Receptor de eventos (`EventListenerProvider`) que transforma las operaciones de autenticación de usuarios y acciones administrativas en métricas dimensionales para Prometheus vía Micrometer.
+
+### Especificación Técnica
+* **Tipo de SPI:** `EventListenerProvider`
+* **Factory Class:** `MetricsEventListenerFactory`
+* **Provider ID:** `metrics-listener`
+* **Paquete Java:** `org.keycloak.events.metrics`
+* **Almacenamiento:** En memoria RAM (Micrometer Core) — no utiliza Infinispan ni base de datos.
+* **Habilitación:** Realm Settings $\to$ Events $\to$ Event Listeners $\to$ Agregar `metrics-listener`
+
+### Métricas Exportadas en `/metrics`
+* **`keycloak_user_events_total`**: Contador de eventos de autenticación de usuarios.
+  * Etiquetas (`labels`): `realm`, `client_id`, `type` (e.g. `LOGIN`, `LOGIN_ERROR`, `REGISTER`, `UPDATE_PASSWORD_ERROR`), `error` (e.g. `invalid_user_credentials`, `user_not_found`, `none`).
+* **`keycloak_admin_events_total`**: Contador de operaciones en la consola de administración.
+  * Etiquetas (`labels`): `realm`, `resource_type`, `operation_type`, `error`.
+
+---
+
 ## ⚡ Inicio Rápido
 
 ### 1. Compilación
