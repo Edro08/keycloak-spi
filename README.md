@@ -5,7 +5,7 @@
 [![Quarkus](https://img.shields.io/badge/Quarkus-3.x-4695EB.svg?logo=quarkus&logoColor=white)](https://quarkus.io/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Implementación de SPIs (Service Provider Interfaces) para **Keycloak 26.8.1** sobre **Java 21 LTS** (Quarkus runtime).
+Implementación de SPIs (Service Provider Interfaces) para **Keycloak 26.8.2** sobre **Java 21 LTS** (Quarkus runtime).
 
 El proyecto contiene proveedores desacoplados con sus correspondientes fábricas (`Factory`), identificadores (`Provider ID`) y declaraciones de servicio en `META-INF/services/`.
 

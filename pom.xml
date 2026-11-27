@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.keycloack</groupId>
+    <groupId>org.keycloak</groupId>
     <artifactId>keycloak-spi</artifactId>
-    <version>26.8.1</version>
+    <version>26.8.2</version>
     <packaging>jar</packaging>
     <name>Keycloak SPIs</name>
-    <description>Custom modular SPIs for Keycloak 26.8.1 on Java 21 LTS</description>
+    <description>Custom modular SPIs for Keycloak 26.8.2 on Java 21 LTS</description>
 
     <licenses>
         <license>
@@ -72,7 +72,7 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
-            <version>1.13.0</version>
+            <version>1.17.1</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -83,10 +83,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.16.0</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <release>${java.version}</release>
                 </configuration>
             </plugin>
         </plugins>
